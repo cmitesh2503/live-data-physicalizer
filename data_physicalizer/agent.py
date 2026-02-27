@@ -3,13 +3,11 @@ import cv2
 import json
 from dotenv import load_dotenv
 from fpdf import FPDF
-from google import adk  # Ensure your environment points to the Google ADK
+from google import adk 
 
 # Load the .env file
 load_dotenv() 
 
-# The ADK uses the environment variables automatically, 
-# but it's good to confirm they are there!
 project = os.getenv("GOOGLE_CLOUD_PROJECT")
 print(f"Agent initializing for project: {project}...")
 
@@ -40,12 +38,10 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
     pdf.add_page()
     
     if mode == "summary":
-        # Header for Summary
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(0, 10, txt="Summary of Captured Notes", ln=True, align='C')
         pdf.ln(10)
         
-        # Bulleted List Logic
         pdf.set_font("Arial", size=12)
         lines = data_content.split('\n')
         for line in lines:
@@ -54,30 +50,25 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
                 pdf.multi_cell(0, 10, txt=f"• {clean_line}")
         
     elif mode == "table":
-        # Header for Table
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(0, 10, txt="Structured Data Table", ln=True, align='C')
         pdf.ln(10)
         
         try:
-            # Parse the JSON string sent by Gemini
             table_data = json.loads(data_content) 
             
             if not table_data or not isinstance(table_data, list):
                 return "Error: Invalid table data format. Expected a list of lists."
 
-            # Auto-Width Logic: Calculate width to fill the page
             num_cols = len(table_data[0])
             col_width = pdf.epw / num_cols 
 
-            # --- 1. Draw Highlighted Headers ---
             pdf.set_font("Arial", 'B', 12)
-            pdf.set_fill_color(200, 220, 255) # Light blue fill
+            pdf.set_fill_color(200, 220, 255) 
             for header in table_data[0]:
                 pdf.cell(col_width, 10, txt=str(header), border=1, fill=True, align='C')
             pdf.ln()
 
-            # --- 2. Draw Data Rows ---
             pdf.set_font("Arial", size=11)
             for row in table_data[1:]:
                 for item in row:
@@ -92,8 +83,6 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
     return f"Successfully saved to {filename}"
 
 # --- AGENT CONFIGURATION ---
-
-# Register the tools for the Bidi session
 tools = [capture_vision_frame, export_to_pdf]
 
 INSTRUCTIONS = """
@@ -107,39 +96,44 @@ You are a Collaborative Data Physicalizer. 🤖
    - If '2': Call 'export_to_pdf' with mode='table'. For table mode, you MUST format data_content as a valid JSON list of lists.
 """
 
-# For fine-tuning the agent behavior we supply the instruction text
-# using the `instruction` parameter (not `system_instruction`).
 agent = adk.Agent(
     name="DataPhysicalizer",
-    model="gemini-2.0-flash",  # Optimized for Multimodal Live API
+    model="gemini-2.0-flash", 
     instruction=INSTRUCTIONS,
     tools=tools,
 )
 
 if __name__ == "__main__":
-    # Instead of calling the low‑level `run_live`/`run_async` methods (which
-    # require an InvocationContext), create a Runner. The runner handles
-    # session/context setup for you and is the normal entrypoint for apps.
     from google.adk import runners
     from google.adk.sessions import InMemorySessionService
+    from google.genai import types
 
     runner = runners.Runner(
         app_name="DataPhysicalizerApp",
         agent=agent,
         session_service=InMemorySessionService(),
-        auto_create_session=True,  # convenience for CLI testing
+        auto_create_session=True,
     )
 
-    # run() is a synchronous generator that yields events; you can iterate over
-    # them to observe what the agent does. For a live bidirectional flow you
-    # would use run_live on the runner instead and supply the parent context
-    # provided by the streaming API.
-    # provide an initial user message; the agent will start executing
-    # when it receives content. adjust as needed for your testing.
-    from google.genai import types
-    starter = types.Content(
-        role="user",
-        parts=[types.Part(text="Physicalize")],
-    )
-    for event in runner.run(user_id="user1", session_id="session1", new_message=starter):
-        print(event)
+    print("--- 🤖 Data Physicalizer Session Started ---")
+    
+    # Starting trigger
+    user_input = "Physicalize"
+    
+    while True:
+        # We wrap our message in the expected Content format
+        message = types.Content(role="user", parts=[types.Part(text=user_input)])
+        
+        # Run the agent for this specific turn
+        for event in runner.run(user_id="user1", session_id="session1", new_message=message):
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if part.text:
+                        print(f"\nAgent: {part.text}")
+        
+        # Wait for user response in the terminal
+        user_input = input("\nYou: ")
+        
+        if user_input.lower() in ["quit", "exit"]:
+            print("Shutting down session...")
+            break
