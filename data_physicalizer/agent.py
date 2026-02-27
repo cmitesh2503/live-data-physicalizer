@@ -4,7 +4,7 @@ import cv2
 import json
 from dotenv import load_dotenv
 from fpdf import FPDF
-from google.genai import adk 
+from google import adk 
 
 # Load the .env file
 load_dotenv() 
