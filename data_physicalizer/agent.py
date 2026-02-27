@@ -15,16 +15,17 @@ print(f"Agent initializing for project: {project}...")
 
 # --- TOOL 1: Vision Capture ---
 def capture_vision_frame():
-    """Captures a single frame from the webcam to 'see' the whiteboard."""
+    """Captures a single frame from the webcam and saves it."""
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         return "Error: Could not open camera."
     
     ret, frame = cap.read()
     if ret:
-        cv2.imwrite("vision_capture.jpg", frame)
+        filepath = "vision_capture.jpg"
+        cv2.imwrite(filepath, frame)
         cap.release()
-        return "I've captured a clear image of the data. Processing now..."
+        return f"Image captured and saved to {filepath}. Analyzing content now..."
     else:
         cap.release()
         return "Error: Failed to capture frame."
@@ -158,6 +159,21 @@ if __name__ == "__main__":
                 pass
             
             message = types.Content(role="user", parts=[types.Part(text=user_input)])
+            
+            # If user said "Physicalize" or we just captured, add the image to the message
+            if user_input.lower() == "physicalize" or (os.path.exists("vision_capture.jpg") and user_input == "Physicalize"):
+                # Wait a moment for capture to complete
+                time.sleep(1)
+                if os.path.exists("vision_capture.jpg"):
+                    with open("vision_capture.jpg", "rb") as img_file:
+                        image_data = img_file.read()
+                    message = types.Content(
+                        role="user", 
+                        parts=[
+                            types.Part(text="Please analyze this whiteboard image and extract all the data/notes you can see. Then ask me if I want it as a list or table."),
+                            types.Part.from_data(data=image_data, mime_type="image/jpeg")
+                        ]
+                    )
             
             for event in runner.run(user_id="user1", session_id="session1", new_message=message):
                 if event.content and event.content.parts:
