@@ -106,26 +106,13 @@ agent = adk.Agent(
 )
 
 if __name__ == "__main__":
+    import time
     from google.adk import runners
     from google.adk.sessions import InMemorySessionService
     from google.genai import types
-    import threading
 
-    # Error flag to communicate between threads
-    error_occurred = threading.Event()
-    error_message = {"msg": None}
-
-    # Custom exception hook for threads
-    original_hook = threading.excepthook
-    
-    def handle_thread_exception(args):
-        if "429" in str(args.exc_value) or "RESOURCE_EXHAUSTED" in str(args.exc_value):
-            error_occurred.set()
-            error_message["msg"] = "rate_limit"
-        else:
-            original_hook(args)
-    
-    threading.excepthook = handle_thread_exception
+    # 1. Define the handle outside the loop so it persists
+    session_handle = None
 
     runner = runners.Runner(
         app_name="DataPhysicalizerApp",
@@ -135,58 +122,44 @@ if __name__ == "__main__":
     )
 
     print("--- 🤖 Data Physicalizer Session Started ---")
-    
-    # Starting trigger
     user_input = "Physicalize"
-    retry_count = 0
-    max_retries = 3
     
     while True:
+        # 2. Configure the session with the current handle
+        config = types.LiveConnectConfig(
+            session_resumption=types.SessionResumptionConfig(handle=session_handle),
+            # Add moderate context compression to avoid 429 errors
+            context_window_compression={
+                "trigger_tokens": 20000,
+                "sliding_window": {"target_tokens": 5000}
+            }
+        )
+        
+        message = types.Content(role="user", parts=[types.Part(text=user_input)])
+        
         try:
-            # Reset error flag
-            error_occurred.clear()
-            
-            # We wrap our message in the expected Content format
-            message = types.Content(role="user", parts=[types.Part(text=user_input)])
-            
-            # Run the agent for this specific turn
-            event_received = False
             for event in runner.run(user_id="user1", session_id="session1", new_message=message):
-                if error_occurred.is_set():
-                    raise Exception("Rate limit hit in background thread")
-                    
+                # 3. Check for the resumption handle update
+                if event.session_resumption_update:
+                    update = event.session_resumption_update
+                    if update.resumable and update.new_handle:
+                        session_handle = update.new_handle
+                        print(f"[System] Received session handle for recovery: {session_handle}")
+
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         if part.text:
                             print(f"\nAgent: {part.text}")
-                            event_received = True
             
-            # Check if error occurred during iteration
-            if error_occurred.is_set():
-                raise Exception("Rate limit hit in background thread")
-            
-            retry_count = 0
-            
-            # Wait for user response in the terminal
             user_input = input("\nYou: ")
-            
             if user_input.lower() in ["quit", "exit"]:
-                print("Shutting down session...")
                 break
-                
-        except (_ResourceExhaustedError, Exception) as e:
-            # Check for rate limiting
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or isinstance(e, _ResourceExhaustedError) or error_message["msg"] == "rate_limit":
-                retry_count += 1
-                if retry_count > max_retries:
-                    print("\n[System] Max retries exceeded. Giving up.")
-                    break
-                wait_time = min(60, 30 + (retry_count * 15))  # Exponential backoff: 30s, 45s, 60s
-                print(f"\n[System] API rate limit hit (attempt {retry_count}/{max_retries}). Waiting {wait_time}s... ⏳")
-                time.sleep(wait_time)
-                print("[System] Retrying now...")
-                continue
+
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                print(f"\n[System] API busy. Pausing 30s... (Handle: {session_handle is not None}) ⏳")
+                time.sleep(30)
+                continue 
             else:
-                # If it's a different error, we should see it
-                print(f"\n[System] An unexpected error occurred: {e}")
+                print(f"\n[System] Error: {e}")
                 break
