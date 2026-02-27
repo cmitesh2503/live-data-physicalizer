@@ -107,13 +107,39 @@ You are a Collaborative Data Physicalizer. 🤖
    - If '2': Call 'export_to_pdf' with mode='table'. For table mode, you MUST format data_content as a valid JSON list of lists.
 """
 
+# For fine-tuning the agent behavior we supply the instruction text
+# using the `instruction` parameter (not `system_instruction`).
 agent = adk.Agent(
     name="DataPhysicalizer",
-    model="gemini-2.0-flash", # Optimized for Multimodal Live API
-    system_instruction=INSTRUCTIONS,
-    tools=tools
+    model="gemini-2.0-flash",  # Optimized for Multimodal Live API
+    instruction=INSTRUCTIONS,
+    tools=tools,
 )
 
 if __name__ == "__main__":
-    # Start the Bidirectional Live Stream
-    agent.run()
+    # Instead of calling the low‑level `run_live`/`run_async` methods (which
+    # require an InvocationContext), create a Runner. The runner handles
+    # session/context setup for you and is the normal entrypoint for apps.
+    from google.adk import runners
+    from google.adk.sessions import InMemorySessionService
+
+    runner = runners.Runner(
+        app_name="DataPhysicalizerApp",
+        agent=agent,
+        session_service=InMemorySessionService(),
+        auto_create_session=True,  # convenience for CLI testing
+    )
+
+    # run() is a synchronous generator that yields events; you can iterate over
+    # them to observe what the agent does. For a live bidirectional flow you
+    # would use run_live on the runner instead and supply the parent context
+    # provided by the streaming API.
+    # provide an initial user message; the agent will start executing
+    # when it receives content. adjust as needed for your testing.
+    from google.genai import types
+    starter = types.Content(
+        role="user",
+        parts=[types.Part(text="Physicalize")],
+    )
+    for event in runner.run(user_id="user1", session_id="session1", new_message=starter):
+        print(event)
