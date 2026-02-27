@@ -110,10 +110,7 @@ if __name__ == "__main__":
     from google.adk import runners
     from google.adk.sessions import InMemorySessionService
     from google.genai import types
-
-    # 1. Define the handle outside the loop so it persists
-    session_handle = None
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                            
     runner = runners.Runner(
         app_name="DataPhysicalizerApp",
         agent=agent,
@@ -123,43 +120,44 @@ if __name__ == "__main__":
 
     print("--- 🤖 Data Physicalizer Session Started ---")
     user_input = "Physicalize"
+    retry_count = 0
+    max_retries = 3
     
     while True:
-        # 2. Configure the session with the current handle
-        config = types.LiveConnectConfig(
-            session_resumption=types.SessionResumptionConfig(handle=session_handle),
-            # Add moderate context compression to avoid 429 errors
-            context_window_compression={
-                "trigger_tokens": 20000,
-                "sliding_window": {"target_tokens": 5000}
-            }
-        )
-        
-        message = types.Content(role="user", parts=[types.Part(text=user_input)])
-        
         try:
+            message = types.Content(role="user", parts=[types.Part(text=user_input)])
+            
             for event in runner.run(user_id="user1", session_id="session1", new_message=message):
-                # 3. Check for the resumption handle update
-                if event.session_resumption_update:
-                    update = event.session_resumption_update
-                    if update.resumable and update.new_handle:
-                        session_handle = update.new_handle
-                        print(f"[System] Received session handle for recovery: {session_handle}")
-
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         if part.text:
                             print(f"\nAgent: {part.text}")
             
+            retry_count = 0  # Reset on success
             user_input = input("\nYou: ")
             if user_input.lower() in ["quit", "exit"]:
                 break
 
         except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                print(f"\n[System] API busy. Pausing 30s... (Handle: {session_handle is not None}) ⏳")
-                time.sleep(30)
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                retry_count += 1
+                if retry_count > max_retries:
+                    print(f"\n[System] Max retries exceeded. API quota is exhausted.")
+                    print("[System] Please wait a few minutes and try again.")
+                    break
+                wait_time = 120 * (2 ** (retry_count - 1))  # 2min, 4min, 8min
+                minutes = wait_time // 60
+                print(f"\n[System] API rate limit hit (attempt {retry_count}/{max_retries}). Waiting {minutes} minute(s)... ⏳")
+                time.sleep(wait_time)
+                print("[System] Retrying now...")
                 continue 
+            elif "camera" in error_str.lower() or "msmf" in error_str.lower():
+                print(f"\n[System] Camera error: {error_str}")
+                print("[System] Make sure your webcam is connected and available.")
+                user_input = input("\nYou: ")
+                if user_input.lower() in ["quit", "exit"]:
+                    break
             else:
-                print(f"\n[System] Error: {e}")
+                print(f"\n[System] Error: {error_str}")
                 break
