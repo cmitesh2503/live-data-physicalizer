@@ -110,7 +110,7 @@ You are a Collaborative Data Physicalizer. 🤖
 agent = adk.Agent(
     name="DataPhysicalizer",
     model="gemini-2.0-flash", # Optimized for Multimodal Live API
-    system_instructions=INSTRUCTIONS,
+    system_instruction=INSTRUCTIONS,
     tools=tools
 )
 
