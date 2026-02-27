@@ -27,7 +27,7 @@ def save_extracted_data(data_content: str, source_type: str = "whiteboard"):
         return f"❌ Error saving data: {str(e)}"
 
 root_agent = Agent(
-    model='gemini-3.1-pro-preview',  # Updated to the latest model
+    model='gemini-2.0-flash-exp',  # Updated to the latest model
     name='DataPhysicalizer',
     description='A high-precision multimodal agent for real-time data extraction.',
     instruction=(
