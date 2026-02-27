@@ -1,8 +1,17 @@
 import os
 import cv2
 import json
+from dotenv import load_dotenv
 from fpdf import FPDF
 from google import adk  # Ensure your environment points to the Google ADK
+
+# Load the .env file
+load_dotenv() 
+
+# The ADK uses the environment variables automatically, 
+# but it's good to confirm they are there!
+project = os.getenv("GOOGLE_CLOUD_PROJECT")
+print(f"Agent initializing for project: {project}...")
 
 # --- TOOL 1: Vision Capture ---
 def capture_vision_frame():
