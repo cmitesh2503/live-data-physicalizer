@@ -1,4 +1,5 @@
 import os
+import time
 import cv2
 import json
 from dotenv import load_dotenv
@@ -121,22 +122,23 @@ if __name__ == "__main__":
     user_input = "Physicalize"
     
     while True:
-        # We wrap our message in the expected Content format
-        message = types.Content(role="user", parts=[types.Part(text=user_input)])
-        
-        # Run the agent for this specific turn
-        for event in runner.run(user_id="user1", session_id="session1", new_message=message):
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if part.text:
-                        print(f"\nAgent: {part.text}")
-        
-        # Wait for user response in the terminal
-        user_input = input("\nYou: ")
-        
-        if user_input.lower() in ["quit", "exit"]:
-            print("Shutting down session...")
-            break
+        try:
+            # We wrap our message in the expected Content format
+            message = types.Content(role="user", parts=[types.Part(text=user_input)])
+            
+            # Run the agent for this specific turn
+            for event in runner.run(user_id="user1", session_id="session1", new_message=message):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            print(f"\nAgent: {part.text}")
+            
+            # Wait for user response in the terminal
+            user_input = input("\nYou: ")
+            
+            if user_input.lower() in ["quit", "exit"]:
+                print("Shutting down session...")
+                break
         except Exception as e:
             # Specifically check for the 429 / Resource Exhausted error
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
