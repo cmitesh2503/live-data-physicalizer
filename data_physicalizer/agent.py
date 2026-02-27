@@ -137,3 +137,14 @@ if __name__ == "__main__":
         if user_input.lower() in ["quit", "exit"]:
             print("Shutting down session...")
             break
+        except Exception as e:
+            # Specifically check for the 429 / Resource Exhausted error
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                print("\n[System] API is busy. Pausing for 30 seconds to reset limits... ⏳")
+                time.sleep(30)
+                print("[System] Retrying now...")
+                continue # Re-run the loop with the same user_input
+            else:
+                # If it's a different error, we should see it
+                print(f"\n[System] An unexpected error occurred: {e}")
+                break
