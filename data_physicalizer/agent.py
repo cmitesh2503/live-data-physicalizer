@@ -167,11 +167,13 @@ if __name__ == "__main__":
                 if os.path.exists("vision_capture.jpg"):
                     with open("vision_capture.jpg", "rb") as img_file:
                         image_data = img_file.read()
+                    
+                    # Create message with both text and image using the correct API
                     message = types.Content(
                         role="user", 
                         parts=[
                             types.Part(text="Please analyze this whiteboard image and extract all the data/notes you can see. Then ask me if I want it as a list or table."),
-                            types.Part.from_data(data=image_data, mime_type="image/jpeg")
+                            types.Part(inline_data=types.Blob(mime_type="image/jpeg", data=image_data))
                         ]
                     )
             
