@@ -4,7 +4,8 @@ import cv2
 import json
 from dotenv import load_dotenv
 from fpdf import FPDF
-from google import adk 
+from google import adk
+from google.adk.models.google_llm import _ResourceExhaustedError 
 
 # Load the .env file
 load_dotenv() 
@@ -139,9 +140,9 @@ if __name__ == "__main__":
             if user_input.lower() in ["quit", "exit"]:
                 print("Shutting down session...")
                 break
-        except Exception as e:
-            # Specifically check for the 429 / Resource Exhausted error
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+        except (_ResourceExhaustedError, Exception) as e:
+            # Specifically check for 429 / Resource Exhausted error
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or isinstance(e, _ResourceExhaustedError):
                 print("\n[System] API is busy. Pausing for 30 seconds to reset limits... ⏳")
                 time.sleep(30)
                 print("[System] Retrying now...")
