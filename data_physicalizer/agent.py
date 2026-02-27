@@ -107,10 +107,30 @@ agent = adk.Agent(
 
 if __name__ == "__main__":
     import time
+    import threading
+    import queue
     from google.adk import runners
     from google.adk.sessions import InMemorySessionService
     from google.genai import types
-                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+
+    # Thread-safe error queue to communicate between main and runner threads
+    error_queue = queue.Queue()
+    
+    # Custom exception hook to catch errors in runner thread
+    original_excepthook = threading.excepthook
+    
+    def thread_exception_handler(args):
+        error_str = str(args.exc_value)
+        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+            error_queue.put(("rate_limit", error_str))
+        elif "camera" in error_str.lower() or "msmf" in error_str.lower():
+            error_queue.put(("camera_error", error_str))
+        else:
+            # Print other exceptions normally
+            original_excepthook(args)
+    
+    threading.excepthook = thread_exception_handler
+
     runner = runners.Runner(
         app_name="DataPhysicalizerApp",
         agent=agent,
@@ -125,6 +145,18 @@ if __name__ == "__main__":
     
     while True:
         try:
+            # Check for errors from background thread
+            try:
+                error_type, error_msg = error_queue.get_nowait()
+                if error_type == "rate_limit":
+                    raise Exception(error_msg)
+                elif error_type == "camera_error":
+                    print(f"\n[System] Camera error detected. Make sure your webcam is available.")
+                    user_input = input("\nYou: ")
+                    continue
+            except queue.Empty:
+                pass
+            
             message = types.Content(role="user", parts=[types.Part(text=user_input)])
             
             for event in runner.run(user_id="user1", session_id="session1", new_message=message):
@@ -132,6 +164,14 @@ if __name__ == "__main__":
                     for part in event.content.parts:
                         if part.text:
                             print(f"\nAgent: {part.text}")
+            
+            # Check again after the run completes
+            try:
+                error_type, error_msg = error_queue.get_nowait()
+                if error_type == "rate_limit":
+                    raise Exception(error_msg)
+            except queue.Empty:
+                pass
             
             retry_count = 0  # Reset on success
             user_input = input("\nYou: ")
@@ -144,7 +184,7 @@ if __name__ == "__main__":
                 retry_count += 1
                 if retry_count > max_retries:
                     print(f"\n[System] Max retries exceeded. API quota is exhausted.")
-                    print("[System] Please wait a few minutes and try again.")
+                    print("[System] Please wait 15-30 minutes and try again.")
                     break
                 wait_time = 120 * (2 ** (retry_count - 1))  # 2min, 4min, 8min
                 minutes = wait_time // 60
@@ -152,12 +192,6 @@ if __name__ == "__main__":
                 time.sleep(wait_time)
                 print("[System] Retrying now...")
                 continue 
-            elif "camera" in error_str.lower() or "msmf" in error_str.lower():
-                print(f"\n[System] Camera error: {error_str}")
-                print("[System] Make sure your webcam is connected and available.")
-                user_input = input("\nYou: ")
-                if user_input.lower() in ["quit", "exit"]:
-                    break
             else:
                 print(f"\n[System] Error: {error_str}")
                 break
