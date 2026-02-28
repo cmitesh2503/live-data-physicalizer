@@ -110,6 +110,100 @@ def ocr_image(filepath: str):
     except Exception as e:
         return None, str(e)
 
+
+def parse_table_from_ocr(text: str):
+    """Attempt to infer a table from OCR text.
+
+    Returns a list-of-lists table (header row first) or None on failure.
+    Heuristics used:
+    - If lines contain ':' treat as key:value pairs -> 2-col table
+    - Prefer tab, pipe, comma, or multi-space delimiters (in that order)
+    - If rows have inconsistent columns, pad shorter rows with ''
+    - If first row looks like header (contains letters) and subsequent rows are more numeric, treat first as header
+    """
+    if not text:
+        return None
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return None
+
+    # If most lines contain ':' -> key:value pairs
+    colon_count = sum(1 for ln in lines if ':' in ln)
+    if colon_count >= max(1, len(lines) // 3):
+        table = [["Key", "Value"]]
+        for ln in lines:
+            if ':' in ln:
+                k, v = ln.split(':', 1)
+                table.append([k.strip(), v.strip()])
+        return table
+
+    # Try delimiters in order
+    delimiters = ['\t', '\|', ',', None]  # None means multi-space or single-space fallback
+    best_table = None
+    best_var = None
+    for d in delimiters:
+        rows = []
+        if d is not None:
+            for ln in lines:
+                parts = [p.strip() for p in ln.split(d) if p.strip()]
+                rows.append(parts)
+        else:
+            # split on 2+ spaces first
+            import re
+            for ln in lines:
+                if re.search(r'\s{2,}', ln):
+                    parts = [p.strip() for p in re.split(r'\s{2,}', ln) if p.strip()]
+                else:
+                    parts = [p.strip() for p in ln.split() if p.strip()]
+                rows.append(parts)
+
+        # compute variability in column counts
+        counts = [len(r) for r in rows]
+        if not counts:
+            continue
+        var = max(counts) - min(counts)
+        # prefer low variability and reasonable columns (>=2)
+        if min(counts) >= 2 and (best_var is None or var < best_var):
+            best_table = rows
+            best_var = var
+
+    if best_table:
+        max_cols = max(len(r) for r in best_table)
+        table = []
+        for r in best_table:
+            row = r + [''] * (max_cols - len(r))
+            table.append(row)
+
+        # Heuristic: if first row contains letters and following rows have numeric in many columns -> header
+        import re
+        def is_mostly_numeric(vals):
+            n = 0
+            for v in vals:
+                if re.search(r'[0-9]', v):
+                    n += 1
+            return n >= max(1, len(vals) // 2)
+
+        first = table[0]
+        rest = table[1:]
+        if rest and any(is_mostly_numeric(r) for r in rest) and any(re.search('[A-Za-z]', c) for c in first):
+            return table
+
+        # If no clear header, synthesize headers
+        if rest:
+            header = [f"Col{i+1}" for i in range(len(table[0]))]
+            return [header] + table
+
+    # Fallback: return key:value single-column pairs if available
+    kvs = []
+    for ln in lines:
+        if ':' in ln:
+            k, v = ln.split(':', 1)
+            kvs.append([k.strip(), v.strip()])
+    if kvs:
+        return [["Key", "Value"]] + kvs
+
+    return None
+
 # --- AGENT CONFIGURATION ---
 tools = [capture_vision_frame, export_to_pdf]
 
@@ -237,16 +331,13 @@ if __name__ == "__main__":
                     result = export_to_pdf(text, mode="summary")
                     print(result)
                 else:
-                    # Table mode: attempt simple token-based table extraction from OCR output
-                    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-                    if not lines:
-                        print("[System] No text extracted from image to form a table.")
+                    # Table mode: use intelligent parsing heuristics on OCR output
+                    table = parse_table_from_ocr(text)
+                    if not table:
+                        print("[System] Unable to infer a table from the extracted text. Falling back to summary PDF.")
+                        result = export_to_pdf(text, mode="summary")
+                        print(result)
                         continue
-                    # Derive headers from first line, split on whitespace or tabs
-                    header = lines[0].split()
-                    table = [header]
-                    for ln in lines[1:]:
-                        table.append(ln.split())
                     result = export_to_pdf(json.dumps(table), mode="table")
                     print(result)
                 # after export, continue main loop
