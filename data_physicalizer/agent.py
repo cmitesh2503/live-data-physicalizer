@@ -28,13 +28,22 @@ def capture_vision_frame():
     ret, frame = cap.read()
     if ret:
         filepath = "vision_capture.jpg"
-        cv2.imwrite(filepath, frame)
+        # improve image contrast/brightness
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        cl = clahe.apply(l)
+        enhanced = cv2.merge((cl,a,b))
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        cv2.imwrite(filepath, enhanced)
         cap.release()
-        return f"Image captured and saved to {filepath}. Analyzing content now..."
+        # perform quick OCR and display result
+        ocr_text, ocr_err = ocr_image(filepath)
+        summary = ocr_text if ocr_text else ''
+        return f"Image captured and saved to {filepath}. OCR output:\n{summary}"
     else:
         cap.release()
         return "Error: Failed to capture frame."
-
 # --- TOOL 2: PDF Export ---
 def export_to_pdf(data_content: str, mode: str = "summary"):
     """
@@ -102,9 +111,18 @@ def ocr_image(filepath: str):
     if img is None:
         return None, "Failed to read image"
     try:
+        # increase resolution for better OCR
+        scale = 2.0
+        img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # simple threshold to improve OCR on whiteboards
-        _, th = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        # apply Gaussian blur to reduce noise
+        gray = cv2.GaussianBlur(gray, (5,5), 0)
+        # adaptive threshold to handle varying lighting
+        th = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, 15, 8)
+        # morphological closing to fill gaps
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+        th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, kernel)
         text = pytesseract.image_to_string(th)
         return text, None
     except Exception as e:
