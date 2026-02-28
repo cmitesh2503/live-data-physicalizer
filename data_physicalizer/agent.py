@@ -279,6 +279,7 @@ if __name__ == "__main__":
 
     print("--- 🤖 Data Physicalizer Session Started ---")
     user_input = "Physicalize"
+    last_summary = ""  # store last text output by agent
     retry_count = 0
     max_retries = 3
     
@@ -320,6 +321,7 @@ if __name__ == "__main__":
                     for part in event.content.parts:
                         if part.text:
                             print(f"\nAgent: {part.text}")
+                            last_summary = part.text  # remember last summary
             
             # Check again after the run completes
             try:
@@ -339,18 +341,26 @@ if __name__ == "__main__":
                 if not os.path.exists("vision_capture.jpg"):
                     print("[System] No captured image found. Say 'Physicalize' first to capture an image.")
                     continue
-                text, err = ocr_image("vision_capture.jpg")
+                # if pytesseract missing, fallback to agent-provided summary
+                if pytesseract is None:
+                    print("[System] pytesseract not installed, using the agent's summary instead of OCR.")
+                    text = last_summary
+                    err = None
+                else:
+                    text, err = ocr_image("vision_capture.jpg")
                 if err:
                     print(f"[System] OCR error: {err}. Please install Tesseract and the Python package pytesseract.")
                     print("Install instructions: https://github.com/tesseract-ocr/tesseract and pip install pytesseract")
-                    continue
+                    # still allow using agent summary
+                    text = last_summary
+                    err = None
 
                 if user_input.strip() == "1":
-                    # Summary mode: use OCR text
+                    # Summary mode: use OCR or fallback
                     result = export_to_pdf(text, mode="summary")
                     print(result)
                 else:
-                    # Table mode: use intelligent parsing heuristics on OCR output
+                    # Table mode: use intelligent parsing heuristics on OCR output or summary
                     table = parse_table_from_ocr(text)
                     if not table:
                         print("[System] Unable to infer a table from the extracted text. Falling back to summary PDF.")
@@ -361,7 +371,7 @@ if __name__ == "__main__":
                     print(result)
                 # after export, continue main loop
                 continue
-
+*** End Patch
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
