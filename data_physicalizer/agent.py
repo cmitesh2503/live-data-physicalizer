@@ -157,7 +157,8 @@ def parse_table_from_ocr(text: str):
         return table
 
     # Try delimiters in order
-    delimiters = ['\t', '\|', ',', None]  # None means multi-space or single-space fallback
+    # delimiters: tab, pipe, comma, then whitespace fallback
+    delimiters = ['\t', '|', ',', None]  # None means multi-space or single-space fallback
     best_table = None
     best_var = None
     for d in delimiters:
@@ -371,7 +372,6 @@ if __name__ == "__main__":
                     print(result)
                 # after export, continue main loop
                 continue
-*** End Patch
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
