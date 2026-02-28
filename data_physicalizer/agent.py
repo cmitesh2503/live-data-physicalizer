@@ -55,20 +55,21 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
     pdf.add_page()
     
     if mode == "summary":
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, txt="Summary of Captured Notes", ln=True, align='C')
+        # use default font; avoid unicode bullets by substituting '-'
+        pdf.set_font("Helvetica", 'B', 16)
+        pdf.cell(0, 10, text="Summary of Captured Notes", new_x=pdf.l_margin, new_y=pdf.y + 10, align='C')
         pdf.ln(10)
         
-        pdf.set_font("Arial", size=12)
+        pdf.set_font("Helvetica", size=12)
         lines = data_content.split('\n')
         for line in lines:
             clean_line = line.strip()
             if clean_line:
-                pdf.multi_cell(0, 10, txt=f"• {clean_line}")
+                pdf.multi_cell(0, 10, text=f"- {clean_line}")
         
     elif mode == "table":
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, txt="Structured Data Table", ln=True, align='C')
+        pdf.set_font("Helvetica", 'B', 16)
+        pdf.cell(0, 10, text="Structured Data Table", new_x=pdf.l_margin, new_y=pdf.y + 10, align='C')
         pdf.ln(10)
         
         try:
