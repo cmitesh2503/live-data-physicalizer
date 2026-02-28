@@ -57,7 +57,7 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
     if mode == "summary":
         # use default font; avoid unicode bullets by substituting '-'
         pdf.set_font("Helvetica", 'B', 16)
-        pdf.cell(0, 10, text="Summary of Captured Notes", new_x=pdf.l_margin, new_y=pdf.y + 10, align='C')
+        pdf.cell(0, 10, text="Summary of Captured Notes", ln=1, align='C')
         pdf.ln(10)
         
         pdf.set_font("Helvetica", size=12)
@@ -69,7 +69,7 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
         
     elif mode == "table":
         pdf.set_font("Helvetica", 'B', 16)
-        pdf.cell(0, 10, text="Structured Data Table", new_x=pdf.l_margin, new_y=pdf.y + 10, align='C')
+        pdf.cell(0, 10, text="Structured Data Table", ln=1, align='C')
         pdf.ln(10)
         
         try:
