@@ -6,6 +6,11 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 from google import adk
 from google.adk.models.google_llm import _ResourceExhaustedError 
+try:
+    import pytesseract
+except Exception:
+    pytesseract = None
+import numpy as np
 
 # Load the .env file
 load_dotenv() 
@@ -84,6 +89,26 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
     filename = f"physicalized_{mode}.pdf"
     pdf.output(filename)
     return f"Successfully saved to {filename}"
+
+
+# --- OCR helper ---
+def ocr_image(filepath: str):
+    """Return OCR text for an image using pytesseract. Returns (text, error_message)."""
+    if not os.path.exists(filepath):
+        return None, "Image file not found"
+    if pytesseract is None:
+        return None, "pytesseract not installed"
+    img = cv2.imread(filepath)
+    if img is None:
+        return None, "Failed to read image"
+    try:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # simple threshold to improve OCR on whiteboards
+        _, th = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        text = pytesseract.image_to_string(th)
+        return text, None
+    except Exception as e:
+        return None, str(e)
 
 # --- AGENT CONFIGURATION ---
 tools = [capture_vision_frame, export_to_pdf]
@@ -192,9 +217,40 @@ if __name__ == "__main__":
                 pass
             
             retry_count = 0  # Reset on success
+            # Prompt the user. If they choose 1 or 2, run local OCR and export PDF.
             user_input = input("\nYou: ")
             if user_input.lower() in ["quit", "exit"]:
                 break
+
+            if user_input.strip() in ["1", "2"]:
+                if not os.path.exists("vision_capture.jpg"):
+                    print("[System] No captured image found. Say 'Physicalize' first to capture an image.")
+                    continue
+                text, err = ocr_image("vision_capture.jpg")
+                if err:
+                    print(f"[System] OCR error: {err}. Please install Tesseract and the Python package pytesseract.")
+                    print("Install instructions: https://github.com/tesseract-ocr/tesseract and pip install pytesseract")
+                    continue
+
+                if user_input.strip() == "1":
+                    # Summary mode: use OCR text
+                    result = export_to_pdf(text, mode="summary")
+                    print(result)
+                else:
+                    # Table mode: attempt simple token-based table extraction from OCR output
+                    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+                    if not lines:
+                        print("[System] No text extracted from image to form a table.")
+                        continue
+                    # Derive headers from first line, split on whitespace or tabs
+                    header = lines[0].split()
+                    table = [header]
+                    for ln in lines[1:]:
+                        table.append(ln.split())
+                    result = export_to_pdf(json.dumps(table), mode="table")
+                    print(result)
+                # after export, continue main loop
+                continue
 
         except Exception as e:
             error_str = str(e)
