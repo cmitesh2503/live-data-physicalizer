@@ -127,16 +127,60 @@ def ocr_image(filepath: str):
         # increase resolution for better OCR
         scale = 2.0
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+        # convert and enhance contrast
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # apply Gaussian blur to reduce noise
-        gray = cv2.GaussianBlur(gray, (5,5), 0)
-        # adaptive threshold to handle varying lighting
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # apply CLAHE local contrast enhancement
+        try:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            gray = clahe.apply(gray)
+        except Exception:
+            pass
+
+        # simple adaptive threshold
         th = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                    cv2.THRESH_BINARY, 15, 8)
-        # morphological closing to fill gaps
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+
+        # morphological closing to fill small holes
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, kernel)
+
+        # save intermediate images for debugging
+        try:
+            cv2.imwrite('vision_capture_enhanced.jpg', img)
+            cv2.imwrite('vision_capture_threshold.jpg', th)
+        except Exception:
+            pass
+
+        # attempt deskew: find largest contour and rotate to upright
+        try:
+            coords = cv2.findNonZero(255 - th)
+            if coords is not None:
+                rect = cv2.minAreaRect(coords)
+                angle = rect[-1]
+                if angle < -45:
+                    angle = -(90 + angle)
+                else:
+                    angle = -angle
+                (h, w) = th.shape
+                center = (w // 2, h // 2)
+                M = cv2.getRotationMatrix2D(center, angle, 1.0)
+                th = cv2.warpAffine(th, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+                img = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+                try:
+                    cv2.imwrite('vision_capture_deskewed.jpg', img)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # run tesseract
         text = pytesseract.image_to_string(th)
+        # basic cleanup: normalize spaces
+        if text:
+            text = '\n'.join([ln.strip() for ln in text.splitlines() if ln.strip()])
         return text, None
     except Exception as e:
         return None, str(e)
