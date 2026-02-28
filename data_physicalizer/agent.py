@@ -12,6 +12,18 @@ except Exception:
     pytesseract = None
 import numpy as np
 
+# If on Windows and Tesseract is installed in the common location, point pytesseract to it
+if pytesseract is not None:
+    try:
+        if os.name == 'nt':
+            possible = [r"C:\Program Files\Tesseract-OCR\tesseract.exe", r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"]
+            for p in possible:
+                if os.path.exists(p):
+                    pytesseract.pytesseract.tesseract_cmd = p
+                    break
+    except Exception:
+        pass
+
 # Load the .env file
 load_dotenv() 
 
