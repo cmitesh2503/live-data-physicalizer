@@ -15,9 +15,21 @@ try:
     import easyocr
 except Exception:
     easyocr = None
+# optional Google Cloud Vision
+try:
+    from google.cloud import vision
+except Exception:
+    vision = None
 import numpy as np
 
-# If on Windows and Tesseract is installed in the common location, point pytesseract to it
+# NOTE: This project can perform OCR via several engines.
+# 1) Tesseract (recommended) — install binary and `pip install pytesseract`.
+# 2) easyocr (pure Python) — `pip install easyocr torch torchvision`.
+# 3) Google Cloud Vision — set GOOGLE_APPLICATION_CREDENTIALS or otherwise
+#    authenticate with Application Default Credentials. Requires
+#    `pip install google-cloud-vision`.
+# The code will automatically pick the first available engine.
+# On Windows we attempt to auto-detect common Tesseract install paths.
 if pytesseract is not None:
     try:
         if os.name == 'nt':
@@ -186,6 +198,18 @@ def ocr_image(filepath: str):
             reader = easyocr.Reader(['en'], gpu=False)
             result = reader.readtext(th)
             text = '\n'.join([r[1] for r in result])
+        elif vision is not None:
+            try:
+                client = vision.ImageAnnotatorClient()
+                with open(filepath, 'rb') as f:
+                    content = f.read()
+                image = vision.Image(content=content)
+                resp = client.text_detection(image=image)
+                if resp.error.message:
+                    return None, resp.error.message
+                text = resp.full_text_annotation.text
+            except Exception as ce:
+                return None, str(ce)
         else:
             return None, "no OCR engine available"
         # basic cleanup: normalize spaces
