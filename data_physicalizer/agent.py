@@ -10,6 +10,11 @@ try:
     import pytesseract
 except Exception:
     pytesseract = None
+# try easyocr as pure-python fallback (requires torch)
+try:
+    import easyocr
+except Exception:
+    easyocr = None
 import numpy as np
 
 # If on Windows and Tesseract is installed in the common location, point pytesseract to it
@@ -118,8 +123,6 @@ def ocr_image(filepath: str):
     """Return OCR text for an image using pytesseract. Returns (text, error_message)."""
     if not os.path.exists(filepath):
         return None, "Image file not found"
-    if pytesseract is None:
-        return None, "pytesseract not installed"
     img = cv2.imread(filepath)
     if img is None:
         return None, "Failed to read image"
@@ -176,8 +179,15 @@ def ocr_image(filepath: str):
         except Exception:
             pass
 
-        # run tesseract
-        text = pytesseract.image_to_string(th)
+        # run OCR with available engine
+        if pytesseract is not None:
+            text = pytesseract.image_to_string(th)
+        elif easyocr is not None:
+            reader = easyocr.Reader(['en'], gpu=False)
+            result = reader.readtext(th)
+            text = '\n'.join([r[1] for r in result])
+        else:
+            return None, "no OCR engine available"
         # basic cleanup: normalize spaces
         if text:
             text = '\n'.join([ln.strip() for ln in text.splitlines() if ln.strip()])
