@@ -361,7 +361,7 @@ You are a Collaborative Data Physicalizer. 🤖
    - If '2': Call 'export_to_pdf' with mode='table'. For table mode, you MUST format data_content as a valid JSON list of lists.
 """
 
-agent = adk.Agent(
+root_agent = Agent(
     name="DataPhysicalizer",
     model="gemini-2.0-flash", 
     instruction=INSTRUCTIONS,
