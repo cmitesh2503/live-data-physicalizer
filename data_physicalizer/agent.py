@@ -3,7 +3,7 @@ import time
 import cv2
 import json
 from dotenv import load_dotenv
-from fpdf import FPDF
+from fpdf import FPDF, XPos, YPos
 from google import adk
 from google.adk.models.google_llm import _ResourceExhaustedError 
 try:
@@ -73,6 +73,17 @@ def capture_vision_frame():
     else:
         cap.release()
         return "Error: Failed to capture frame."
+
+# --- Helper: Sanitize text for PDF rendering ---
+def sanitize_text_for_pdf(text: str) -> str:
+    """Remove or replace characters that helvetica font doesn't support."""
+    # Replace curly quotes with straight quotes
+    text = text.replace('"', '"').replace('"', '"')  # " and "
+    text = text.replace(''', "'").replace(''', "'")   # ' and '
+    # Replace other common problematic unicode characters
+    text = text.replace('–', '-').replace('—', '-')   # en-dash, em-dash
+    return text
+
 # --- TOOL 2: PDF Export ---
 def export_to_pdf(data_content: str, mode: str = "summary"):
     """
@@ -80,25 +91,45 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
     mode="summary": A clean, bulleted list of notes.
     mode="table": A structured grid with headers and auto-widths.
     """
+    # Sanitize input to avoid font encoding issues
+    data_content = sanitize_text_for_pdf(data_content)
+    
     pdf = FPDF()
     pdf.add_page()
     
     if mode == "summary":
         # use default font; avoid unicode bullets by substituting '-'
         pdf.set_font("Helvetica", 'B', 16)
-        pdf.cell(0, 10, text="Summary of Captured Notes", ln=1, align='C')
-        pdf.ln(10)
+        pdf.cell(0, 10, text="Summary of Captured Notes", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
+        pdf.ln(5)
         
-        pdf.set_font("Helvetica", size=12)
+        pdf.set_font("Helvetica", size=11)
         lines = data_content.split('\n')
         for line in lines:
             clean_line = line.strip()
             if clean_line:
-                pdf.multi_cell(0, 10, text=f"- {clean_line}")
+                # Use multi_cell with a left margin for bullet points
+                # Width of 0 means full page width
+                try:
+                    bullet = "- "
+                    # Set left margin/indent for readability
+                    pdf.set_left_margin(15)
+                    pdf.multi_cell(0, 6, text=f"{bullet}{clean_line}")
+                    pdf.set_left_margin(10)
+                except Exception as e:
+                    # If multi_cell fails, use simple cell approach
+                    pdf.set_left_margin(10)
+                    try:
+                        # Truncate very long lines
+                        if len(clean_line) > 100:
+                            clean_line = clean_line[:100] + "..."
+                        pdf.cell(0, 6, text=f"- {clean_line}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    except:
+                        pass
         
     elif mode == "table":
         pdf.set_font("Helvetica", 'B', 16)
-        pdf.cell(0, 10, text="Structured Data Table", ln=1, align='C')
+        pdf.cell(0, 10, text="Structured Data Table", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
         pdf.ln(10)
         
         try:
@@ -110,16 +141,18 @@ def export_to_pdf(data_content: str, mode: str = "summary"):
             num_cols = len(table_data[0])
             col_width = pdf.epw / num_cols 
 
-            pdf.set_font("Arial", 'B', 12)
+            pdf.set_font("Helvetica", 'B', 10)
             pdf.set_fill_color(200, 220, 255) 
             for header in table_data[0]:
-                pdf.cell(col_width, 10, txt=str(header), border=1, fill=True, align='C')
+                header_text = str(header)[:20]  # Truncate long header text
+                pdf.cell(col_width, 10, txt=header_text, border=1, fill=True, align='C')
             pdf.ln()
 
-            pdf.set_font("Arial", size=11)
+            pdf.set_font("Helvetica", size=10)
             for row in table_data[1:]:
                 for item in row:
-                    pdf.cell(col_width, 10, txt=str(item), border=1)
+                    item_text = str(item)[:25]  # Truncate long cell text
+                    pdf.cell(col_width, 10, txt=item_text, border=1)
                 pdf.ln()
 
         except Exception as e:
