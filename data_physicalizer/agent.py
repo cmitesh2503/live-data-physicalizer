@@ -5,7 +5,8 @@ import json
 from dotenv import load_dotenv
 from fpdf import FPDF, XPos, YPos
 from google import adk
-from google.adk.models.google_llm import _ResourceExhaustedError 
+from google.adk.models.google_llm import _ResourceExhaustedError
+from google.adk.agents import Agent
 try:
     import pytesseract
 except Exception:
